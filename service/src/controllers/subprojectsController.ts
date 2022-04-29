@@ -4,7 +4,7 @@ import type { FastifyValidatedRoute } from '../types/schemas';
 import type { GetSubprojectsRequestSchema } from '../types/schemas/subprojects';
 
 export const getSubprojectsController: FastifyValidatedRoute<GetSubprojectsRequestSchema> = async (req, res) => {
-  const subprojects = await getSubprojects(req.params.projectId);
+  const subprojects = await getSubprojects(req.params);
 
   res.send(subprojects);
 };

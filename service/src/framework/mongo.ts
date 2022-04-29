@@ -2,14 +2,23 @@ import { MongoClient, ReadPreference, Db, ObjectId, WithId, MongoClientOptions, 
 import { mongoUrl, mongoDbName, nodeEnv, mongoDbUser, mongoDbPassword } from './env';
 import { CommitRecordsQueryResolution } from '../consts/commitRecords';
 
-import type { CommitRecordPayload, CommitRecord } from 'bundlemon-utils';
+import type { CommitRecordPayload } from 'bundlemon-utils';
+import type {
+  CommitRecord,
+  ProjectOwnerDetails,
+  GitOwnerDetails,
+  OwnerDetails,
+} from 'bundlemon-utils/lib/esm/v2/types';
 import type { GetCommitRecordsQuery } from '../types/schemas';
 import type { ProjectApiKey } from '../types';
 
-interface CommitRecordDB extends CommitRecordPayload {
-  projectId: string;
+interface BaseCommitRecordDB extends CommitRecordPayload {
   creationDate: Date;
 }
+
+type ProjectCommitRecordDB = BaseCommitRecordDB & ProjectOwnerDetails;
+type GitCommitRecordDB = BaseCommitRecordDB & GitOwnerDetails;
+type CommitRecordDB = ProjectCommitRecordDB | GitCommitRecordDB;
 
 interface ProjectDB {
   apiKey: ProjectApiKey;
@@ -85,12 +94,15 @@ const commitRecordDBToResponse = (record: WithId<CommitRecordDB>): CommitRecord 
   return { id: _id.toHexString(), creationDate: creationDate.toISOString(), ...restRecord };
 };
 
-export const createCommitRecord = async (projectId: string, record: CommitRecordPayload): Promise<CommitRecord> => {
+export const createCommitRecord = async (
+  ownerDetails: OwnerDetails,
+  record: CommitRecordPayload
+): Promise<CommitRecord> => {
   const commitRecordsCollection = await getCommitRecordsCollection();
-  const recordToSave: Omit<CommitRecordDB, '_id'> = { ...record, projectId, creationDate: new Date() };
+  const recordToSave: Omit<CommitRecordDB, '_id'> = { ...record, ...ownerDetails, creationDate: new Date() };
 
   const result = await commitRecordsCollection.findOneAndReplace(
-    { projectId, subProject: record.subProject, commitSha: record.commitSha },
+    { ownerDetails, subProject: record.subProject, commitSha: record.commitSha },
     recordToSave,
     {
       upsert: true,
@@ -108,16 +120,16 @@ export const createCommitRecord = async (projectId: string, record: CommitRecord
 };
 
 export const getCommitRecord = async ({
-  projectId,
+  ownerDetails,
   commitRecordId,
 }: {
-  projectId: string;
+  ownerDetails: OwnerDetails;
   commitRecordId: string;
 }): Promise<CommitRecord | undefined> => {
   const commitRecordsCollection = await getCommitRecordsCollection();
   const record = await commitRecordsCollection.findOne<WithId<CommitRecordDB>>({
     _id: new ObjectId(commitRecordId),
-    projectId,
+    ...ownerDetails,
   });
 
   if (!record) {
@@ -163,7 +175,7 @@ const resolutions: Record<
 };
 
 export async function getCommitRecords(
-  projectId: string,
+  ownerDetails: OwnerDetails,
   { branch, latest, resolution, subProject, olderThan }: GetCommitRecordsQuery
 ): Promise<CommitRecord[]> {
   const commitRecordsCollection = await getCommitRecordsCollection();
@@ -182,7 +194,7 @@ export async function getCommitRecords(
         {
           $match: {
             ...creationDateFilter,
-            projectId,
+            ...ownerDetails,
             branch,
             subProject,
           },
@@ -218,7 +230,7 @@ export async function getCommitRecords(
   } else {
     records = await commitRecordsCollection
       .find(
-        { ...creationDateFilter, projectId, branch: branch, subProject },
+        { ...creationDateFilter, ...ownerDetails, branch: branch, subProject },
         { sort: { creationDate: -1 }, limit: latest ? 1 : MAX_RECORDS }
       )
       .toArray();
@@ -227,9 +239,9 @@ export async function getCommitRecords(
   return records.map(commitRecordDBToResponse);
 }
 
-export async function getSubprojects(projectId: string) {
+export async function getSubprojects(ownerDetails: OwnerDetails) {
   const commitRecordsCollection = await getCommitRecordsCollection();
-  const subProjects = await commitRecordsCollection.distinct('subProject', { projectId });
+  const subProjects = await commitRecordsCollection.distinct('subProject', ownerDetails);
 
   return subProjects.filter((s) => !!s);
 }

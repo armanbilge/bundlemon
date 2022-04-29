@@ -1,10 +1,12 @@
 import { githubAppId, githubAppPrivateKey } from './env';
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
+import { checkAuthHeaders } from '../utils/auth';
 
 import type { RequestError } from '@octokit/types';
-import type { FastifyLoggerInstance } from 'fastify';
+import type { FastifyLoggerInstance, FastifyReply } from 'fastify';
 import type { OutputResponse } from 'bundlemon-utils';
+import type { AuthHeadersV2 } from '../types/schemas';
 
 let _app: Octokit | undefined;
 
@@ -30,6 +32,41 @@ export const getApp = () => {
 
   return _app;
 };
+
+export interface GetGithubAppTokenParams {
+  headers: AuthHeadersV2;
+  owner: string;
+  repo: string;
+}
+
+export async function getInstallationOctokit({ headers, owner, repo }: GetGithubAppTokenParams, res: FastifyReply) {
+  // TODO: check that github actions header owner & repo equals owner & repo params
+
+  const authResult = await checkAuthHeaders(headers, res.log);
+
+  if (!authResult.authenticated) {
+    res.status(403).send({ error: authResult.error });
+    return;
+  }
+
+  let installationOctokit = authResult.installationOctokit;
+
+  if (!installationOctokit) {
+    const installationId = await getInstallationId(owner, repo);
+
+    if (!installationId) {
+      res.log.info({ owner, repo }, 'BundleMon GitHub app is not installed on this repo');
+      res.status(400).send({
+        error: `BundleMon GitHub app is not installed on this repo (${owner}/${repo})`,
+      });
+      return;
+    }
+
+    installationOctokit = createInstallationOctokit(installationId);
+  }
+
+  return installationOctokit;
+}
 
 export const getInstallationId = async (owner: string, repo: string): Promise<number | undefined> => {
   try {

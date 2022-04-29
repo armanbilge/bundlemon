@@ -1,21 +1,27 @@
 /* istanbul ignore file */
 
 import type { CommitRecordPayload } from 'bundlemon-utils';
+import type { ProjectOwnerDetails, OwnerDetails } from 'bundlemon-utils/lib/esm/v2/types';
 import type { CommitRecordsQueryResolution, BaseRecordCompareTo } from '../../consts/commitRecords';
-import type { BaseRequestSchema, BaseGetRequestSchema, AuthHeaders, ProjectIdParams } from './common';
+import type { BaseRequestSchema, BaseGetRequestSchema, AuthHeadersV1, AuthHeadersV2 } from './common';
 
-export interface CreateCommitRecordRequestSchema extends BaseRequestSchema {
+export interface CreateCommitRecordV1RequestSchema extends BaseRequestSchema {
   body: CommitRecordPayload;
-  params: ProjectIdParams;
-  headers: AuthHeaders;
+  params: ProjectOwnerDetails;
+  headers: AuthHeadersV1;
 }
 
-interface GetCommitRecordRequestParams extends ProjectIdParams {
+export interface CreateCommitRecordV2RequestSchema extends BaseRequestSchema {
+  body: CommitRecordPayload;
+  headers: AuthHeadersV2;
+}
+
+type GetCommitRecordRequestParams = OwnerDetails & {
   /**
    * @pattern ^[0-9a-fA-F]{24}$
    */
   commitRecordId: string;
-}
+};
 
 interface GetCommitRecordRequestQuery {
   /**
@@ -38,6 +44,6 @@ export interface GetCommitRecordsQuery {
 }
 
 export interface GetCommitRecordsRequestSchema extends BaseGetRequestSchema {
-  params: ProjectIdParams;
+  params: OwnerDetails;
   query: GetCommitRecordsQuery;
 }

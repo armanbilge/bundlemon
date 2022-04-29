@@ -6,15 +6,14 @@ import {
   getReportConclusionText,
 } from 'bundlemon-utils';
 import {
-  getInstallationId,
+  getInstallationOctokit,
   createCheck,
   createCommitStatus,
   createOrUpdatePRComment,
   genCommentIdentifier,
-  createInstallationOctokit,
 } from '../framework/github';
 import { generateReportMarkdownWithLinks } from './utils/markdownReportGenerator';
-import { checkAuthHeaders } from './utils/auth';
+import { transformV1AuthHeadersToV2 } from '../utils/auth';
 import { promiseAllObject } from '../utils/promiseUtils';
 
 import type {
@@ -22,44 +21,10 @@ import type {
   CreateGithubCheckRequestSchema,
   CreateGithubCommitStatusRequestSchema,
   PostGithubPRCommentRequestSchema,
-  GithubOutputRequestSchema,
-  AuthHeaders,
+  GithubOutputV1RequestSchema,
+  GithubOutputV2RequestSchema,
 } from '../types/schemas';
 import type { FastifyReply } from 'fastify';
-
-export interface GetGithubAppTokenParams {
-  projectId: string;
-  headers: AuthHeaders;
-  owner: string;
-  repo: string;
-}
-
-async function getInstallationOctokit({ projectId, headers, owner, repo }: GetGithubAppTokenParams, res: FastifyReply) {
-  const authResult = await checkAuthHeaders(projectId, headers, res.log);
-
-  if (!authResult.authenticated) {
-    res.status(403).send({ error: authResult.error });
-    return;
-  }
-
-  let installationOctokit = authResult.installationOctokit;
-
-  if (!installationOctokit) {
-    const installationId = await getInstallationId(owner, repo);
-
-    if (!installationId) {
-      res.log.info({ projectId, owner, repo }, 'BundleMon GitHub app is not installed on this repo');
-      res.status(400).send({
-        error: `BundleMon GitHub app is not installed on this repo (${owner}/${repo})`,
-      });
-      return;
-    }
-
-    installationOctokit = createInstallationOctokit(installationId);
-  }
-
-  return installationOctokit;
-}
 
 // bundlemon <= v0.4.0
 export const createGithubCheckController: FastifyValidatedRoute<CreateGithubCheckRequestSchema> = async (req, res) => {
@@ -73,7 +38,10 @@ export const createGithubCheckController: FastifyValidatedRoute<CreateGithubChec
       },
     } = req;
 
-    const installationOctokit = await getInstallationOctokit({ projectId, headers, owner, repo }, res);
+    const installationOctokit = await getInstallationOctokit(
+      { headers: transformV1AuthHeadersToV2(headers, projectId), owner, repo },
+      res
+    );
 
     if (!installationOctokit) {
       return;
@@ -121,7 +89,10 @@ export const createGithubCommitStatusController: FastifyValidatedRoute<CreateGit
       },
     } = req;
 
-    const installationOctokit = await getInstallationOctokit({ projectId, headers, owner, repo }, res);
+    const installationOctokit = await getInstallationOctokit(
+      { headers: transformV1AuthHeadersToV2(headers, projectId), owner, repo },
+      res
+    );
 
     if (!installationOctokit) {
       return;
@@ -164,7 +135,10 @@ export const postGithubPRCommentController: FastifyValidatedRoute<PostGithubPRCo
       },
     } = req;
 
-    const installationOctokit = await getInstallationOctokit({ projectId, headers, owner, repo }, res);
+    const installationOctokit = await getInstallationOctokit(
+      { headers: transformV1AuthHeadersToV2(headers, projectId), owner, repo },
+      res
+    );
 
     if (!installationOctokit) {
       return;
@@ -193,19 +167,37 @@ export const postGithubPRCommentController: FastifyValidatedRoute<PostGithubPRCo
 };
 
 // bundlemon > v0.4
-export const githubOutputController: FastifyValidatedRoute<GithubOutputRequestSchema> = async (req, res) => {
+export const githubOutputV1Controller: FastifyValidatedRoute<GithubOutputV1RequestSchema> = async (req, res) => {
+  const {
+    headers,
+    params: { projectId },
+    body,
+  } = req;
+
+  handleGithubOutput({ headers: transformV1AuthHeadersToV2(headers, projectId), body, res });
+};
+
+export const githubOutputV2Controller: FastifyValidatedRoute<GithubOutputV2RequestSchema> = async (req, res) => {
+  const { headers, body } = req;
+
+  handleGithubOutput({ headers, body, res });
+};
+
+interface HandleGithubOutputParams {
+  headers: GithubOutputV2RequestSchema['headers'];
+  body: GithubOutputV2RequestSchema['body'];
+  res: FastifyReply;
+}
+
+export const handleGithubOutput = async ({ headers, body, res }: HandleGithubOutputParams) => {
   try {
     const {
-      params: { projectId },
-      headers,
-      body: {
-        git: { owner, repo, commitSha, prNumber },
-        report,
-        output,
-      },
-    } = req;
+      git: { owner, repo, commitSha, prNumber },
+      report,
+      output,
+    } = body;
 
-    const installationOctokit = await getInstallationOctokit({ projectId, headers, owner, repo }, res);
+    const installationOctokit = await getInstallationOctokit({ headers, owner, repo }, res);
 
     if (!installationOctokit) {
       return;
@@ -227,7 +219,7 @@ export const githubOutputController: FastifyValidatedRoute<GithubOutputRequestSc
         title: getReportConclusionText(report),
         summary,
         conclusion: report.status === Status.Pass ? 'success' : 'failure',
-        log: req.log,
+        log: res.log,
       });
     }
 
@@ -241,7 +233,7 @@ export const githubOutputController: FastifyValidatedRoute<GithubOutputRequestSc
         state: report.status === Status.Pass ? 'success' : 'error',
         description: getReportConclusionText(report),
         targetUrl: report.metadata.linkToReport || undefined,
-        log: req.log,
+        log: res.log,
       });
     }
 
@@ -256,7 +248,7 @@ export const githubOutputController: FastifyValidatedRoute<GithubOutputRequestSc
         prNumber,
         installationOctokit,
         body,
-        log: req.log,
+        log: res.log,
       });
     }
 
@@ -264,7 +256,7 @@ export const githubOutputController: FastifyValidatedRoute<GithubOutputRequestSc
 
     res.send(response);
   } catch (err) {
-    req.log.error(err);
+    res.log.error(err);
 
     res.status(500).send({
       message: 'failed to post GitHub output',

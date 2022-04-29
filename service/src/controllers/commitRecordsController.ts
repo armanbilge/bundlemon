@@ -1,47 +1,67 @@
 import { createCommitRecord, getCommitRecords, getCommitRecord } from '../framework/mongo';
-import { checkAuthHeaders } from './utils/auth';
+import { checkAuthHeaders, transformV1AuthHeadersToV2 } from '../utils/auth';
 import { generateLinkToReport } from '../utils/linkUtils';
 import { BaseRecordCompareTo } from '../consts/commitRecords';
 
 import type {
   FastifyValidatedRoute,
-  CreateCommitRecordRequestSchema,
+  CreateCommitRecordV1RequestSchema,
+  CreateCommitRecordV2RequestSchema,
   GetCommitRecordRequestSchema,
   GetCommitRecordsRequestSchema,
 } from '../types/schemas';
-import type { BaseCommitRecordResponse, CommitRecord, CreateCommitRecordResponse } from 'bundlemon-utils';
+import type {
+  BaseCommitRecordResponse,
+  CommitRecord,
+  CreateCommitRecordResponse,
+} from 'bundlemon-utils/lib/esm/v2/types';
+import type { FastifyReply } from 'fastify';
 
 export const getCommitRecordsController: FastifyValidatedRoute<GetCommitRecordsRequestSchema> = async (req, res) => {
-  const records = await getCommitRecords(req.params.projectId, req.query);
+  const records = await getCommitRecords(req.params, req.query);
 
   res.send(records);
 };
 
-export const createCommitRecordController: FastifyValidatedRoute<CreateCommitRecordRequestSchema> = async (
-  req,
+export const createCommitRecordV1Controller: FastifyValidatedRoute<CreateCommitRecordV1RequestSchema> = async (
+  { params: { projectId }, body, headers },
   res
 ) => {
-  const {
-    params: { projectId },
-    body,
-    headers,
-  } = req;
-  const authResult = await checkAuthHeaders(projectId, headers, req.log);
+  handleCreateCommitRecord({ body, headers: transformV1AuthHeadersToV2(headers, projectId), res });
+};
+
+export const createCommitRecordV2Controller: FastifyValidatedRoute<CreateCommitRecordV2RequestSchema> = async (
+  { body, headers },
+  res
+) => {
+  handleCreateCommitRecord({ body, headers, res });
+};
+
+interface HandleCreateCommitRecordParams {
+  headers: CreateCommitRecordV2RequestSchema['headers'];
+  // TODO: change to new body structure?
+  body: CreateCommitRecordV2RequestSchema['body'];
+  res: FastifyReply;
+}
+
+export const handleCreateCommitRecord = async ({ headers, body, res }: HandleCreateCommitRecordParams) => {
+  const authResult = await checkAuthHeaders(headers, res.log);
 
   if (!authResult.authenticated) {
     res.status(403).send({ error: authResult.error });
     return;
   }
 
-  const record = await createCommitRecord(projectId, body);
+  const { ownerDetails } = authResult;
+  const record = await createCommitRecord(ownerDetails, body);
 
-  req.log.info({ recordId: record.id }, 'commit record created');
+  res.log.info({ recordId: record.id }, 'commit record created');
 
   let baseRecord: CommitRecord | undefined;
 
   try {
     baseRecord = (
-      await getCommitRecords(projectId, {
+      await getCommitRecords(ownerDetails, {
         branch: body.baseBranch ?? body.branch,
         subProject: body.subProject,
         latest: true,
@@ -50,16 +70,16 @@ export const createCommitRecordController: FastifyValidatedRoute<CreateCommitRec
     )?.[0];
 
     if (baseRecord) {
-      req.log.info({ baseRecordId: baseRecord.id }, 'base record found');
+      res.log.info({ baseRecordId: baseRecord.id }, 'base record found');
     }
   } catch (err) {
-    req.log.error({ err }, 'Error while fetching base record');
+    res.log.error({ err }, 'Error while fetching base record');
   }
 
   const response: CreateCommitRecordResponse = {
     record,
     baseRecord,
-    linkToReport: generateLinkToReport({ projectId, commitRecordId: record.id }),
+    linkToReport: generateLinkToReport({ ownerDetails, commitRecordId: record.id }),
   };
 
   res.send(response);
@@ -69,19 +89,19 @@ export const getCommitRecordWithBaseController: FastifyValidatedRoute<GetCommitR
   req,
   res
 ) => {
-  const { projectId, commitRecordId } = req.params;
+  const { commitRecordId, ...ownerDetails } = req.params;
   const { compareTo = BaseRecordCompareTo.PreviousCommit } = req.query;
 
-  const record = await getCommitRecord({ projectId, commitRecordId });
+  const record = await getCommitRecord({ ownerDetails, commitRecordId });
 
   if (!record) {
-    req.log.info({ commitRecordId, projectId }, 'commit record not found for project');
+    req.log.info({ commitRecordId, ownerDetails }, 'commit record not found');
     res.status(404).send('commit record not found for project');
     return;
   }
 
   const baseRecord = (
-    await getCommitRecords(projectId, {
+    await getCommitRecords(ownerDetails, {
       branch: record.baseBranch ?? record.branch,
       subProject: record.subProject,
       latest: true,

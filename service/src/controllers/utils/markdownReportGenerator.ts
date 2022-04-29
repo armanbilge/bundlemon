@@ -1,8 +1,9 @@
 import { generateReportMarkdown } from 'bundlemon-markdown-output';
 import { CommitRecordsQueryResolution } from '../../consts/commitRecords';
 import { generateLinkToReports, GenerateLinkToReportskParams } from '../../utils/linkUtils';
+import { extractOwnerDetailsFromCommitRecord } from '../..//utils/ownerDetails';
 
-import type { Report, CommitRecord } from 'bundlemon-utils';
+import type { Report, CommitRecord } from 'bundlemon-utils/lib/esm/v2/types';
 
 interface GetReportsPageLinkParams extends GenerateLinkToReportskParams {
   text: string;
@@ -21,14 +22,16 @@ export function generateReportMarkdownWithLinks(report: Report): string {
   let body = generateReportMarkdown(report);
 
   if (record || baseRecord) {
-    const { projectId, subProject } = (record || baseRecord) as CommitRecord;
+    const r = (record || baseRecord) as CommitRecord;
+    const { subProject } = r;
+    const ownerDetails = extractOwnerDetailsFromCommitRecord(r);
 
     const links: string[] = [];
 
     if (record) {
       links.push(
         getReportsPageLink({
-          projectId,
+          ownerDetails,
           subProject,
           branch: record.branch,
           resolution: CommitRecordsQueryResolution.All,
@@ -40,7 +43,7 @@ export function generateReportMarkdownWithLinks(report: Report): string {
     if (baseRecord) {
       links.push(
         getReportsPageLink({
-          projectId,
+          ownerDetails,
           subProject,
           branch: baseRecord.branch,
           resolution: CommitRecordsQueryResolution.Days,

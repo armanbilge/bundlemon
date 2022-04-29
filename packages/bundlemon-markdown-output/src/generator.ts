@@ -9,7 +9,7 @@ import {
 } from 'bundlemon-utils';
 import { escapeMarkdown, formatText, generateMarkdownTable } from './markdownUtils';
 
-import type { FileDetailsDiff, Report } from 'bundlemon-utils';
+import type { FileDetailsDiff, Report } from 'bundlemon-utils/lib/esm/v2/types';
 import { GenerateReportMarkdownOptions } from './types';
 
 function sortBySizeDESC(a: FileDetailsDiff, b: FileDetailsDiff) {

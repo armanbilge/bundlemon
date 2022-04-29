@@ -1,27 +1,19 @@
 import {
-  createCommitRecordV1Controller,
+  createCommitRecordV2Controller,
   getCommitRecordsController,
   getCommitRecordWithBaseController,
 } from '../../controllers/commitRecordsController';
 import { createProjectController } from '../../controllers/projectsController';
 import {
-  CreateCommitRecordV1RequestSchema,
+  CreateCommitRecordV2RequestSchema,
   GetCommitRecordsRequestSchema,
   GetCommitRecordRequestSchema,
-  CreateGithubCheckRequestSchema,
-  CreateGithubCommitStatusRequestSchema,
-  PostGithubPRCommentRequestSchema,
-  GithubOutputV1RequestSchema,
+  GithubOutputV2RequestSchema,
   GetSubprojectsRequestSchema,
 } from '../../consts/schemas';
 
 import type { FastifyPluginCallback } from 'fastify';
-import {
-  createGithubCheckController,
-  createGithubCommitStatusController,
-  postGithubPRCommentController,
-  githubOutputV1Controller,
-} from '../../controllers/githubController';
+import { githubOutputV2Controller } from '../../controllers/githubController';
 import { getSubprojectsController } from '../../controllers/subprojectsController';
 
 const commitRecordRoutes: FastifyPluginCallback = (app, _opts, done) => {
@@ -32,7 +24,6 @@ const commitRecordRoutes: FastifyPluginCallback = (app, _opts, done) => {
 
 const commitRecordsRoutes: FastifyPluginCallback = (app, _opts, done) => {
   app.get('/', { schema: GetCommitRecordsRequestSchema.properties }, getCommitRecordsController);
-  app.post('/', { schema: CreateCommitRecordV1RequestSchema.properties }, createCommitRecordV1Controller);
 
   app.register(commitRecordRoutes, { prefix: '/:commitRecordId' });
 
@@ -40,21 +31,7 @@ const commitRecordsRoutes: FastifyPluginCallback = (app, _opts, done) => {
 };
 
 const outputsRoutes: FastifyPluginCallback = (app, _opts, done) => {
-  // bundlemon > v0.4.0
-  app.post('/github', { schema: GithubOutputV1RequestSchema.properties }, githubOutputV1Controller);
-
-  // bundlemon <= v0.4.0
-  app.post('/github/check-run', { schema: CreateGithubCheckRequestSchema.properties }, createGithubCheckController);
-  app.post(
-    '/github/commit-status',
-    { schema: CreateGithubCommitStatusRequestSchema.properties },
-    createGithubCommitStatusController
-  );
-  app.post(
-    '/github/pr-comment',
-    { schema: PostGithubPRCommentRequestSchema.properties },
-    postGithubPRCommentController
-  );
+  app.post('/github', { schema: GithubOutputV2RequestSchema.properties }, githubOutputV2Controller);
 
   done();
 };
@@ -67,7 +44,6 @@ const subprojectsRoutes: FastifyPluginCallback = (app, _opts, done) => {
 
 const projectRoutes: FastifyPluginCallback = (app, _opts, done) => {
   app.register(commitRecordsRoutes, { prefix: '/commit-records' });
-  app.register(outputsRoutes, { prefix: '/outputs' });
   app.register(subprojectsRoutes, { prefix: '/subprojects' });
 
   done();
@@ -81,10 +57,23 @@ const projectsRoutes: FastifyPluginCallback = (app, _opts, done) => {
   done();
 };
 
-const v1Routes: FastifyPluginCallback = (app, _opts, done) => {
-  app.register(projectsRoutes, { prefix: '/projects' });
+const providersRoutes: FastifyPluginCallback = (app, _opts, done) => {
+  app.post('/', createProjectController);
+
+  app.register(projectRoutes, { prefix: '/:provider/:owner/:repo' });
 
   done();
 };
 
-export default v1Routes;
+const v2Routes: FastifyPluginCallback = (app, _opts, done) => {
+  app.register(projectsRoutes, { prefix: '/projects' });
+  app.register(providersRoutes, { prefix: '/providers' });
+
+  app.register(outputsRoutes, { prefix: '/outputs' });
+
+  app.post('/commit-records', { schema: CreateCommitRecordV2RequestSchema.properties }, createCommitRecordV2Controller);
+
+  done();
+};
+
+export default v2Routes;

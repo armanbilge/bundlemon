@@ -1,29 +1,44 @@
 import { appDomain } from '../framework/env';
 import { URLSearchParams } from 'url';
 import { CommitRecordsQueryResolution } from '../consts/commitRecords';
+import { OwnerDetails } from 'bundlemon-utils/lib/esm/v2/types';
 
 interface GenerateLinkToReport {
-  projectId: string;
+  ownerDetails: OwnerDetails;
   commitRecordId: string;
 }
 
-export function generateLinkToReport({ projectId, commitRecordId }: GenerateLinkToReport) {
-  return `https://${appDomain}/projects/${projectId}/reports/${commitRecordId}`;
+export function generateLinkToReport({ ownerDetails, commitRecordId }: GenerateLinkToReport) {
+  return `${generateBaseLinkByOwnerDetails(ownerDetails)}/reports/${commitRecordId}`;
 }
 
 export interface GenerateLinkToReportskParams {
-  projectId: string;
+  ownerDetails: OwnerDetails;
   subProject?: string;
   branch: string;
   resolution: CommitRecordsQueryResolution;
 }
 
-export function generateLinkToReports({ projectId, subProject, branch, resolution }: GenerateLinkToReportskParams) {
+export function generateLinkToReports({ ownerDetails, subProject, branch, resolution }: GenerateLinkToReportskParams) {
   const query = new URLSearchParams({ branch, resolution });
 
   if (subProject) {
     query.append('subProject', subProject);
   }
 
-  return `https://${appDomain}/projects/${projectId}/reports?${query.toString()}`;
+  return `${generateBaseLinkByOwnerDetails(ownerDetails)}/reports?${query.toString()}`;
+}
+
+function generateBaseLinkByOwnerDetails(ownerDetails: OwnerDetails) {
+  return `https://${appDomain}/${generateOwnerDetailsLinkPath(ownerDetails)}`;
+}
+
+export function generateOwnerDetailsLinkPath(ownerDetails: OwnerDetails) {
+  if ('projectId' in ownerDetails) {
+    const { projectId } = ownerDetails;
+    return `projects/${projectId}`;
+  } else {
+    const { provider, owner, repo } = ownerDetails;
+    return `providers/${provider}/${owner}/${repo}`;
+  }
 }

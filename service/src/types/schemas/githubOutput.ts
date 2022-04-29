@@ -1,14 +1,8 @@
 /* istanbul ignore file */
 
 import type { GithubOutputTypes, Report } from 'bundlemon-utils';
-import type { AuthHeaders, BaseRequestSchema } from './common';
-
-interface ProjectIdParams {
-  /**
-   * @pattern ^[0-9a-fA-F]{24}$
-   */
-  projectId: string;
-}
+import type { ProjectOwnerDetails } from 'bundlemon-utils/lib/esm/v2/types';
+import type { AuthHeadersV1, AuthHeadersV2, BaseRequestSchema } from './common';
 
 interface ProjectApiKeyHeaders {
   /**
@@ -28,7 +22,7 @@ interface CreateGithubCheckBody {
 
 export interface CreateGithubCheckRequestSchema extends BaseRequestSchema {
   body: CreateGithubCheckBody;
-  params: ProjectIdParams;
+  params: ProjectOwnerDetails;
   headers: ProjectApiKeyHeaders;
 }
 
@@ -43,7 +37,7 @@ interface CreateGithubCommitStatusBody {
 
 export interface CreateGithubCommitStatusRequestSchema extends BaseRequestSchema {
   body: CreateGithubCommitStatusBody;
-  params: ProjectIdParams;
+  params: ProjectOwnerDetails;
   headers: ProjectApiKeyHeaders;
 }
 
@@ -58,7 +52,7 @@ interface CreateGithubPrCommentBody {
 
 export interface PostGithubPRCommentRequestSchema extends BaseRequestSchema {
   body: CreateGithubPrCommentBody;
-  params: ProjectIdParams;
+  params: ProjectOwnerDetails;
   headers: ProjectApiKeyHeaders;
 }
 
@@ -73,8 +67,13 @@ interface GithubOutputBody {
   output: Partial<Record<GithubOutputTypes, boolean>>;
 }
 
-export interface GithubOutputRequestSchema extends BaseRequestSchema {
+export interface GithubOutputV1RequestSchema extends BaseRequestSchema {
   body: GithubOutputBody;
-  params: ProjectIdParams;
-  headers: AuthHeaders;
+  params: ProjectOwnerDetails;
+  headers: AuthHeadersV1;
+}
+
+export interface GithubOutputV2RequestSchema extends BaseRequestSchema {
+  body: GithubOutputBody;
+  headers: AuthHeadersV2;
 }
